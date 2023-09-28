@@ -35,7 +35,7 @@ def delete_DS_store():
 
 def get_texts():
     texts = []
-    f = open('texter.csv', 'r')
+    f = open('texter.csv', 'r', encoding='utf-8')
 
     tuple_list = []
     # Get all the lines
