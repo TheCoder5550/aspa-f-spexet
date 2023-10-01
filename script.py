@@ -132,7 +132,7 @@ def create_pdf(filename, top_text, imagepath, bottom_text, borders = False):
         margin = 10*mm
         x = width-logo_size - margin
         y = margin
-        c.drawImage(logo, x, y, logo_size, logo_size)
+        c.drawImage(logo, x, y, logo_size, logo_size, mask='auto')
     def draw_image(c,path):
         def get_center_x_coord(image_width):
             return (width - image_width)/2
