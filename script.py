@@ -212,7 +212,7 @@ def generate_all_the_things():
         top_text, bottom_text = tuple_texts[i]
         image_path = image_names[i]
         print("Arbetar på bild " + image_path + " med texten \"" + top_text + "\"" )
-        filename = "output/" + str(i) + ".pdf" # "output/" + top_text + ".pdf"
+        filename = "output/" + str(i+1) + ".pdf" # "output/" + top_text + ".pdf"
         create_pdf(filename,top_text,image_path, bottom_text)
         print("Klar med " + filename)
         procent = i/len(tuple_texts) * 100
