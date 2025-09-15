@@ -207,7 +207,7 @@ def create_pdf(index, maxCount, filename, top_text, imagepath, bottom_text, bord
             
             # Smaller text
             fontName = font
-            fontsize = 20
+            fontsize = 16
             canvas.setFont(fontName, fontsize)
 
             for i in range(len(additional_info)):
