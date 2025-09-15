@@ -1,0 +1,4 @@
+input/bilder/*
+output
+.vscode
+.DS_Store
