@@ -15,9 +15,14 @@ from reportlab.lib.units import inch, mm
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.lib.utils import simpleSplit
 
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
 import os
 from os import listdir
 from os.path import isfile, join
+from pathlib import Path
+import shutil
 
 from reportlab.lib.colors import (
     black,
@@ -28,14 +33,32 @@ from reportlab.lib.colors import (
 
 width, height = A4
 
-def delete_DS_store():
-    path = "bilder/.DS_Store"
-    if(isfile(path)):
-        os.remove(path)
+# Register font before it can be used
+pdfmetrics.registerFont(TTFont('Vera', 'Vera.ttf'))
+pdfmetrics.registerFont(TTFont('VeraBd', 'VeraBd.ttf'))
+
+font = "Vera"
+font_bold = "VeraBd"
+
+def isImage(path):
+    ext = imghdr.what(path)
+    return ext in ["gif", "png", "jpeg"]
+
+def get_bottom_info():
+    f = open('input/bottomtext.txt', 'r', encoding='utf-8')
+    lines = [line.rstrip() for line in f]
+    if len(lines) == 0:
+        return ""
+    return lines[0]
+
+def get_additional_info():
+    f = open('input/subtext.txt', 'r', encoding='utf-8')
+    lines = [line.rstrip() for line in f]
+    return lines
 
 def get_texts():
     texts = []
-    f = open('texter.csv', 'r', encoding='utf-8')
+    f = open('input/texter.csv', 'r', encoding='utf-8')
 
     tuple_list = []
     # Get all the lines
@@ -53,10 +76,12 @@ def get_texts():
     return tuple_list
 
 def get_images():
-    mypath = "bilder"
-    onlyfiles = [mypath + "/" + f for f in listdir(mypath) if isfile(join(mypath, f))]
+    mypath = "input/bilder"
+    onlyfiles = [mypath + "/" + f for f in listdir(mypath) if isfile(join(mypath, f)) and isImage(join(mypath, f))]
     onlyfiles.sort()
-    print(onlyfiles)
+    print("Hittade dessa bilder:")
+    print("\n".join(onlyfiles))
+    print("---------------------")
     return onlyfiles
 
 def get_image_size(fname):
@@ -94,7 +119,7 @@ def get_image_size(fname):
             return
         return width, height
 
-def create_pdf(filename, top_text, imagepath, bottom_text, borders = False):
+def create_pdf(index, maxCount, filename, top_text, imagepath, bottom_text, borders = False):
     def draw_text_top(c,txt):
         def get_center_x_coord(w):
             return (width - w)/2
@@ -110,11 +135,11 @@ def create_pdf(filename, top_text, imagepath, bottom_text, borders = False):
             c.rect(get_center_x_coord(maxWidth),y,maxWidth,maxHeight)
 
         fontSize = 40
-        fontName = "Helvetica-Bold"
+        fontName = font_bold
 
 
         def draw_text(fontSize,y):
-            lineheight = fontSize + 5;
+            lineheight = fontSize + 5
             lines = simpleSplit(txt,fontName, fontSize,maxWidth)
             if (len(lines)>2):
                 draw_text(fontSize*0.9,y)
@@ -127,7 +152,7 @@ def create_pdf(filename, top_text, imagepath, bottom_text, borders = False):
                     y = y + lineheight
         draw_text(fontSize,y)
     def draw_logo(canvas):
-        logo = "loggan.png"
+        logo = "input/loggan.png"
         logo_size = 40*mm
         margin = 10*mm
         x = width-logo_size - margin
@@ -168,7 +193,7 @@ def create_pdf(filename, top_text, imagepath, bottom_text, borders = False):
             x = (width - strwidth)/2
             return x
 
-        fontName = "Helvetica-Bold"
+        fontName = font_bold
         maxWidth = 0.8*width
         canvas.setFillColor(black)
         canvas.setStrokeColor(black)
@@ -179,19 +204,25 @@ def create_pdf(filename, top_text, imagepath, bottom_text, borders = False):
         else:
             y = 170
             canvas.drawString(get_center_x_coord(text,fontName,fontsize),y,text)
+            
             # Smaller text
-            fontName = "Helvetica"
+            fontName = font
             fontsize = 20
             canvas.setFont(fontName, fontsize)
-            text = "Asp-lunch Tisdag Lv1"
-            y = y-30
-            canvas.drawString(get_center_x_coord(text, fontName, fontsize),y, text)
-            text = "12:00 i FB"
-            y = y - fontsize - 5
-            canvas.drawString(get_center_x_coord(text, fontName, fontsize),y, text)
-            text = "Tas ned den 11/12"
-            y = fontsize
-            canvas.drawString(get_center_x_coord(text, fontName, fontsize),y, text)
+
+            for i in range(len(additional_info)):
+                text = additional_info[i]
+                y -= fontsize * 1.25
+                canvas.drawString(get_center_x_coord(text, fontName, fontsize), y, text)  
+            
+            y = 20
+            canvas.drawString(get_center_x_coord(bottom_info, fontName, fontsize), y, bottom_info)
+
+    def draw_count(canvas):
+        fontName = font
+        fontsize = 15
+        canvas.setFont(fontName, fontsize)
+        canvas.drawString(20, 20, str(index + 1) + "/" + str(maxCount))
 
     c = canvas.Canvas(filename, pagesize=A4)
 
@@ -199,22 +230,43 @@ def create_pdf(filename, top_text, imagepath, bottom_text, borders = False):
     draw_text_bottom(c,bottom_text)
     draw_image(c,imagepath)
     draw_text_top(c,top_text)
+    draw_count(c)
+
     c.showPage()
     c.save()
 
+def createOutputDir():
+    outDir = "./output/"
+    if os.path.exists(outDir) and os.path.isdir(outDir):
+        shutil.rmtree(outDir)
+    Path(outDir).mkdir(parents=False, exist_ok=True)
+
 def generate_all_the_things():
-    delete_DS_store()
+    createOutputDir()
 
     tuple_texts = get_texts()
     image_names = get_images()
 
+    missmatch_len = len(tuple_texts) != len(image_names)
+    if missmatch_len:
+        print("VARNING: Antalet texter and bilder matchar inte!")
+        print(str(len(tuple_texts)) + " texter")
+        print(str(len(image_names)) + " bilder")
+        print("---------------------")
+
     for i in range(0,len(tuple_texts)):
         top_text, bottom_text = tuple_texts[i]
         image_path = image_names[i]
-        print("Arbetar på bild " + image_path + " med texten \"" + top_text + "\"" )
-        filename = "output/" + str(i+1) + ".pdf" # "output/" + top_text + ".pdf"
-        create_pdf(filename,top_text,image_path, bottom_text)
-        print("Klar med " + filename)
+
         procent = i/len(tuple_texts) * 100
-        print("{0:.1f}".format(procent) + "%")
+        progress = "{0:.1f}".format(procent) + "%"
+        print(progress.ljust(7, " ") + "Arbetar på bild " + image_path + " med texten \"" + top_text + "\"" )
+        
+        filename = "output/" + str(i+1) + ".pdf"
+        create_pdf(i, len(tuple_texts), filename,top_text,image_path, bottom_text)
+
+    print("Klart.")
+
+bottom_info = get_bottom_info()
+additional_info = get_additional_info()
 generate_all_the_things()
