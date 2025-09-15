@@ -34,11 +34,14 @@ from reportlab.lib.colors import (
 width, height = A4
 
 # Register font before it can be used
-pdfmetrics.registerFont(TTFont('Vera', 'Vera.ttf'))
-pdfmetrics.registerFont(TTFont('VeraBd', 'VeraBd.ttf'))
+pdfmetrics.registerFont(TTFont('Inter', 'Inter.ttf'))
+pdfmetrics.registerFont(TTFont('InterBd', 'InterBd.ttf'))
 
-font = "Vera"
-font_bold = "VeraBd"
+# pdfmetrics.registerFont(TTFont('Vera', 'Vera.ttf'))
+# pdfmetrics.registerFont(TTFont('VeraBd', 'VeraBd.ttf'))
+
+font = "Inter"
+font_bold = "InterBd"
 
 def isImage(path):
     ext = imghdr.what(path)
@@ -78,7 +81,7 @@ def get_texts():
 def get_images():
     mypath = "input/bilder"
     onlyfiles = [mypath + "/" + f for f in listdir(mypath) if isfile(join(mypath, f)) and isImage(join(mypath, f))]
-    onlyfiles.sort()
+    onlyfiles.sort(key=lambda f: int(Path(f).stem))
     print("Hittade dessa bilder:")
     print("\n".join(onlyfiles))
     print("---------------------")
