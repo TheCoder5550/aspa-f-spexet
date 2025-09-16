@@ -4,9 +4,10 @@ Generates asp-posters for f-spexet
 ## Usage
 To run `script.py`, you first need to install python3 (and pip3).
 
-1. Install reportlab
+1. Install reportlab (and imghdr if you are using the newest version of python)
 ```
 pip3 install reportlab
+pip3 install standard-imghdr
 ```
 
 2. Download this repo

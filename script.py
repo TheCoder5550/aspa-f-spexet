@@ -14,6 +14,9 @@ from reportlab.lib.units import inch, mm
 
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.lib.utils import simpleSplit
+from reportlab.lib.utils import ImageReader
+
+from PIL import Image
 
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
@@ -60,22 +63,20 @@ def get_additional_info():
     return lines
 
 def get_texts():
-    texts = []
     f = open('input/texter.csv', 'r', encoding='utf-8')
 
     tuple_list = []
+
     # Get all the lines
-    for line in f:
-        linelen = len(line)
-        line_last = line[linelen-1:]
-        if(line_last == '\n'):
-            line = line[:-1]
-        texts.append(line)
+    lines = (line.rstrip() for line in f)
+    lines = list(line for line in lines if line)
+
     # split all the lines
-    for text in texts:
+    for text in lines:
         strs = text.split(',')
         a = strs[0], strs[1]
         tuple_list.append(a)
+
     return tuple_list
 
 def get_images():
@@ -87,40 +88,45 @@ def get_images():
     print("---------------------")
     return onlyfiles
 
-def get_image_size(fname):
-    '''Determine the image type of fhandle and return its size.
-    from draco'''
-    with open(fname, 'rb') as fhandle:
-        head = fhandle.read(24)
-        if len(head) != 24:
-            return
-        if imghdr.what(fname) == 'png':
-            check = struct.unpack('>i', head[4:8])[0]
-            if check != 0x0d0a1a0a:
-                return
-            width, height = struct.unpack('>ii', head[16:24])
-        elif imghdr.what(fname) == 'gif':
-            width, height = struct.unpack('<HH', head[6:10])
-        elif imghdr.what(fname) == 'jpeg':
-            try:
-                fhandle.seek(0) # Read 0xff next
-                size = 2
-                ftype = 0
-                while not 0xc0 <= ftype <= 0xcf:
-                    fhandle.seek(size, 1)
-                    byte = fhandle.read(1)
-                    while ord(byte) == 0xff:
-                        byte = fhandle.read(1)
-                    ftype = ord(byte)
-                    size = struct.unpack('>H', fhandle.read(2))[0] - 2
-                # We are at a SOFn block
-                fhandle.seek(1, 1)  # Skip `precision' byte.
-                height, width = struct.unpack('>HH', fhandle.read(4))
-            except Exception: #IGNORE:W0703
-                return
-        else:
-            return
-        return width, height
+def get_image_and_size(fname):
+    ORIENTATIONS = {
+        1: "Horizontal (normal)",
+        2: "Mirrored horizontal",
+        3: "Rotated 180",
+        4: "Mirrored vertical",
+        5: "Mirrored horizontal then rotated 90 CCW",
+        6: "Rotated 90 CW",
+        7: "Mirrored horizontal then rotated 90 CW",
+        8: "Rotated 90 CCW",
+    }
+
+    image = Image.open(fname)
+    image_width, image_height = image.size
+    if hasattr(image, '_getexif') and image._getexif() is not None:
+        orientation = image._getexif().get(274, 1)  # 274 = Orientation
+    else:
+        orientation = 1
+
+    if orientation == 1:
+        angle = 0
+    elif orientation == 3:
+        angle = 180
+    elif orientation == 6:
+        image_width, image_height = image_height, image_width
+        angle = 90
+    elif orientation == 8:
+        image_width, image_height = image_height, image_width
+        angle = 270
+    else:
+        raise ValueError("Unsupported image orientation '%s'." % ORIENTATIONS[orientation])
+
+    if angle != 0:
+        image = image.rotate(-angle, expand=True)
+        image = ImageReader(image)
+    else:
+        image = fname
+
+    return image, image_width, image_height
 
 def create_pdf(index, maxCount, filename, top_text, imagepath, bottom_text, borders = False):
     def draw_text_top(c,txt):
@@ -129,6 +135,7 @@ def create_pdf(index, maxCount, filename, top_text, imagepath, bottom_text, bord
         def get_center_y_coord(y,h):
             y = y + (maxHeight - h)/2
             return y
+        
         maxHeight = 130
         maxWidth = 0.8*width
         c.setFillColor(black)
@@ -139,7 +146,6 @@ def create_pdf(index, maxCount, filename, top_text, imagepath, bottom_text, bord
 
         fontSize = 40
         fontName = font_bold
-
 
         def draw_text(fontSize,y):
             lineheight = fontSize + 5
@@ -153,44 +159,47 @@ def create_pdf(index, maxCount, filename, top_text, imagepath, bottom_text, bord
                     c.setFont(fontName, fontSize)
                     c.drawString(x,y,line)
                     y = y + lineheight
+
         draw_text(fontSize,y)
-    def draw_logo(canvas):
+
+    def draw_logo(c):
         logo = "input/loggan.png"
         logo_size = 40*mm
         margin = 10*mm
         x = width-logo_size - margin
         y = margin
         c.drawImage(logo, x, y, logo_size, logo_size, mask='auto')
+
     def draw_image(c,path):
         def get_center_x_coord(image_width):
             return (width - image_width)/2
         def get_center_y_coord(y,image_height):
             y = y + (maxHeight - image_height)/2
             return y
+        def get_size(ratio):
+            image_width = maxWidth
+            image_height = ratio * image_width
+            if image_height > maxHeight:
+                image_height = maxHeight
+                image_width = image_height/ratio
+            return image_width, image_height
 
         maxWidth = 0.8*width
         maxHeight = height * 0.5
         y = 250
         x = get_center_x_coord(maxWidth)
-        image_x, image_y = get_image_size(path)
-        ratio = image_y/image_x
-        def get_size(ratio):
-            image_width = maxWidth
-            image_height = ratio * image_width
-            if(image_height>maxHeight):
-                image_height = maxHeight
-                image_width = image_height/ratio
-            return image_width, image_height
 
         c.setFillColor(black)
         c.setStrokeColor(black)
         if (borders):
             c.rect(x,y,maxWidth,maxHeight)
 
+        image, image_x, image_y = get_image_and_size(path)
+        ratio = image_y/image_x
         image_x, image_y = get_size(ratio)
-        c.drawImage(path, get_center_x_coord(image_x), get_center_y_coord(y,image_y), image_x, image_y)
-    def draw_text_bottom(canvas, text, fontsize = 60):
+        c.drawImage(image, get_center_x_coord(image_x), get_center_y_coord(y,image_y), image_x, image_y)
 
+    def draw_text_bottom(canvas, text, fontsize = 60):
         def get_center_x_coord(text,fontName,fontsize):
             strwidth = stringWidth(text, fontName, fontsize)
             x = (width - strwidth)/2
@@ -202,7 +211,8 @@ def create_pdf(index, maxCount, filename, top_text, imagepath, bottom_text, bord
         canvas.setStrokeColor(black)
         canvas.setFont(fontName, fontsize)
         lines = simpleSplit(text,fontName,fontsize,maxWidth)
-        if(len(lines)>1):
+
+        if len(lines) > 1:
             draw_text_bottom(canvas, text, fontsize*0.9)
         else:
             y = 170
@@ -212,6 +222,8 @@ def create_pdf(index, maxCount, filename, top_text, imagepath, bottom_text, bord
             fontName = font
             fontsize = 16
             canvas.setFont(fontName, fontsize)
+
+            y -= fontsize * 0.75
 
             for i in range(len(additional_info)):
                 text = additional_info[i]
@@ -230,9 +242,9 @@ def create_pdf(index, maxCount, filename, top_text, imagepath, bottom_text, bord
     c = canvas.Canvas(filename, pagesize=A4)
 
     draw_logo(c)
-    draw_text_bottom(c,bottom_text)
-    draw_image(c,imagepath)
-    draw_text_top(c,top_text)
+    draw_text_bottom(c, bottom_text)
+    draw_image(c, imagepath)
+    draw_text_top(c, top_text)
     draw_count(c)
 
     c.showPage()
